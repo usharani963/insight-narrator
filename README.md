@@ -48,14 +48,14 @@ Streamlit App (interactive Q&A interface)
 
 ## Statistical Tests Implemented
 
-| Question | Test | Why |
-|---|---|---|
-| Does fertilizer usage affect yield? | Independent t-test (high vs. low fertilizer, split at median) | Compares two groups |
-| Does yield differ across states? | One-way ANOVA | Compares 3+ groups |
-| Is rainfall correlated with yield? | Pearson correlation | Tests linear relationship |
-| Is pesticide usage correlated with yield? | Pearson correlation | Tests linear relationship |
-| Has yield changed over time? | Mann-Kendall trend test | Non-parametric trend detection, robust to outliers |
-| Are crop type and season independent? | Chi-square test | Tests categorical association |
+| Question                                  | Test                                                          | Why                                                |
+| ----------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------- |
+| Does fertilizer usage affect yield?       | Independent t-test (high vs. low fertilizer, split at median) | Compares two groups                                |
+| Does yield differ across states?          | One-way ANOVA                                                 | Compares 3+ groups                                 |
+| Is rainfall correlated with yield?        | Pearson correlation                                           | Tests linear relationship                          |
+| Is pesticide usage correlated with yield? | Pearson correlation                                           | Tests linear relationship                          |
+| Has yield changed over time?              | Mann-Kendall trend test                                       | Non-parametric trend detection, robust to outliers |
+| Are crop type and season independent?     | Chi-square test                                               | Tests categorical association                      |
 
 ### Key Methodology Decision: Crop-Normalized Yield
 
@@ -71,17 +71,17 @@ Each statistical result is converted into a 2-3 sentence plain-English explanati
 
 ### Why direction is pre-computed rather than left to the LLM
 
-Initial testing (with a local model) showed the LLM would sometimes state the *opposite* direction of the actual result (e.g., claiming high fertilizer usage was linked to *lower* yield when the data showed the opposite). This is a known limitation of small LLMs — they generate plausible-sounding text rather than performing reliable numeric comparison. Moving the numeric logic into Python and having the LLM only handle phrasing eliminated this failure mode entirely, regardless of which model is used downstream.
+Initial testing (with a local model) showed the LLM would sometimes state the _opposite_ direction of the actual result (e.g., claiming high fertilizer usage was linked to _lower_ yield when the data showed the opposite). This is a known limitation of small LLMs — they generate plausible-sounding text rather than performing reliable numeric comparison. Moving the numeric logic into Python and having the LLM only handle phrasing eliminated this failure mode entirely, regardless of which model is used downstream.
 
 ### Model Comparison
 
 Three models were tested for the narrative generation step, run against the identical prompt and pre-computed findings:
 
-| Model | Hosting | Params | Observed behavior |
-|---|---|---|---|
-| `llama3.2:1b` (Ollama) | Local | 1B | Frequently misstated numeric direction, introduced claims about untested variables (scope creep), and used causal language despite explicit prompt constraints. Required additional safeguards to be usable. |
-| `llama-3.3-70b-versatile` (Groq) | Hosted | 70B | Correct direction, correct significance framing, properly hedged (correlational, not causal) language — no safety-net corrections needed. |
-| `openai/gpt-oss-20b` (Groq) | Hosted | 20B | **Final choice.** Matched the 70B model's reliability on direction, significance, and scope — with faster response times and a more generous free tier. Occasional grammar softening around the causal-language filter (see below), but no factual errors observed. |
+| Model                            | Hosting | Params | Observed behavior                                                                                                                                                                                                                                                   |
+| -------------------------------- | ------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `llama3.2:1b` (Ollama)           | Local   | 1B     | Frequently misstated numeric direction, introduced claims about untested variables (scope creep), and used causal language despite explicit prompt constraints. Required additional safeguards to be usable.                                                        |
+| `llama-3.3-70b-versatile` (Groq) | Hosted  | 70B    | Correct direction, correct significance framing, properly hedged (correlational, not causal) language — no safety-net corrections needed.                                                                                                                           |
+| `openai/gpt-oss-20b` (Groq)      | Hosted  | 20B    | **Final choice.** Matched the 70B model's reliability on direction, significance, and scope — with faster response times and a more generous free tier. Occasional grammar softening around the causal-language filter (see below), but no factual errors observed. |
 
 The project ships with `openai/gpt-oss-20b` via the Groq API as the default, since it offered the best balance of reliability, speed, and cost for this use case. The code is structured so swapping models (or switching back to a local Ollama model for offline use) requires changing only one line in `narrative_engine.py`.
 
@@ -117,6 +117,7 @@ The project ships with `openai/gpt-oss-20b` via the Groq API as the default, sin
 ```
 
 **AI-Generated Insight**:
+
 > The analysis shows that farms with higher fertilizer usage tend to have higher normalized yield than those with lower usage. The difference is statistically significant, with a p-value of 0.0121, indicating that the observed association is unlikely to be due to random chance.
 
 **Question**: Is rainfall correlated with yield?
@@ -133,6 +134,7 @@ The project ships with `openai/gpt-oss-20b` via the Groq API as the default, sin
 ```
 
 **AI-Generated Insight**:
+
 > No correlation between rainfall and the yield of a crop was found through statistical analysis. The results show that the amount of rainfall in a given area does not have a significant effect on the yield of that crop.
 
 ---
@@ -168,6 +170,7 @@ insight-narrator/
 ## How to Run Locally
 
 1. Clone the repo and set up a virtual environment:
+
 ```bash
 git clone https://github.com/YOUR_USERNAME/insight-narrator.git
 cd insight-narrator
@@ -177,17 +180,20 @@ pip install -r requirements.txt
 ```
 
 2. Set up MySQL and load the data:
+
 ```bash
 python load_data.py
 python eda.py
 ```
 
 3. Get a free API key from [Groq Console](https://console.groq.com), then create a `.env` file in the project root (see `.env.example`):
+
 ```
 GROQ_API_KEY=your_actual_key_here
 ```
 
 4. Run the app:
+
 ```bash
 streamlit run app.py
 ```
@@ -208,4 +214,4 @@ streamlit run app.py
 ## Author
 
 Meenuga Usharani
-[LinkedIn] | [GitHub] | [Portfolio]
+[https://www.linkedin.com/in/meenugausharani963/] | [https://github.com/usharani963] | [https://meenuga-portfolio.vercel.app/]
