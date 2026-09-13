@@ -1,10 +1,17 @@
 # narrative_engine.py
 import re
-from langchain_community.llms import Ollama
+import os
+from dotenv import load_dotenv
+from langchain_groq import ChatGroq
 from langchain_core.prompts import PromptTemplate
 
-llm = Ollama(model="llama3.2:1b", num_predict=300)
+load_dotenv()
 
+llm = ChatGroq(
+    model="openai/gpt-oss-20b",   # fast + free-tier friendly; use "llama-3.3-70b-versatile" for higher quality
+    temperature=0.3,
+    groq_api_key=os.getenv("GROQ_API_KEY")
+)
 
 narrative_prompt = PromptTemplate(
     input_variables=["test_name", "variable", "direction", "p_value", "significant"],
@@ -34,8 +41,10 @@ CAUSAL_REPLACEMENTS = {
     r"\bcauses?\b": "association with",
     r"\bmakes a difference\b": "shows an association",
     r"\bresults? in\b": "is associated with",
+    r"\bdirect relationship\b": "association",
     r"\bactually\b": "",
 }
+
 def soften_causal_language(text: str) -> str:
     for pattern, replacement in CAUSAL_REPLACEMENTS.items():
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
@@ -49,5 +58,6 @@ def generate_narrative(result: dict) -> str:
         p_value=result["p_value"],
         significant=result["significant"]
     )
-    raw_output = llm.invoke(prompt)
+    response = llm.invoke(prompt)
+    raw_output = response.content   # ChatGroq returns a message object, not a plain string
     return soften_causal_language(raw_output)

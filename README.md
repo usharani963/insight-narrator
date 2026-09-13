@@ -67,20 +67,73 @@ Outliers were also removed using the IQR method prior to analysis to prevent a s
 
 ## LLM Narrative Layer
 
-A locally hosted `llama3.2:1b` model (via Ollama) converts each statistical result into a 2-3 sentence plain-English explanation. Direction and significance are **pre-computed in Python** and passed into the prompt as fixed facts — the LLM is instructed to restate them, not recalculate them.
+Each statistical result is converted into a 2-3 sentence plain-English explanation by an LLM. Direction and significance are **pre-computed in Python** and passed into the prompt as fixed facts — the LLM is instructed to restate them, not recalculate them.
 
 ### Why direction is pre-computed rather than left to the LLM
 
-Initial testing showed the LLM would sometimes state the *opposite* direction of the actual result (e.g., claiming high fertilizer usage was linked to *lower* yield when the data showed the opposite). This is a known limitation of small LLMs — they generate plausible-sounding text rather than performing reliable numeric comparison. Moving the numeric logic into Python and having the LLM only handle phrasing eliminated this failure mode.
+Initial testing (with a local model) showed the LLM would sometimes state the *opposite* direction of the actual result (e.g., claiming high fertilizer usage was linked to *lower* yield when the data showed the opposite). This is a known limitation of small LLMs — they generate plausible-sounding text rather than performing reliable numeric comparison. Moving the numeric logic into Python and having the LLM only handle phrasing eliminated this failure mode entirely, regardless of which model is used downstream.
+
+### Model Comparison
+
+Three models were tested for the narrative generation step, run against the identical prompt and pre-computed findings:
+
+| Model | Hosting | Params | Observed behavior |
+|---|---|---|---|
+| `llama3.2:1b` (Ollama) | Local | 1B | Frequently misstated numeric direction, introduced claims about untested variables (scope creep), and used causal language despite explicit prompt constraints. Required additional safeguards to be usable. |
+| `llama-3.3-70b-versatile` (Groq) | Hosted | 70B | Correct direction, correct significance framing, properly hedged (correlational, not causal) language — no safety-net corrections needed. |
+| `openai/gpt-oss-20b` (Groq) | Hosted | 20B | **Final choice.** Matched the 70B model's reliability on direction, significance, and scope — with faster response times and a more generous free tier. Occasional grammar softening around the causal-language filter (see below), but no factual errors observed. |
+
+The project ships with `openai/gpt-oss-20b` via the Groq API as the default, since it offered the best balance of reliability, speed, and cost for this use case. The code is structured so swapping models (or switching back to a local Ollama model for offline use) requires changing only one line in `narrative_engine.py`.
 
 ---
 
 ## Known Limitations
 
-1. **Causal language leakage**: Despite explicit prompt instructions to avoid causal framing (since these are observational correlations, not controlled experiments), the small local LLM occasionally produces phrases like "leads to" or "direct relationship." A regex-based post-processing filter catches and softens common causal phrases, but it is not exhaustive and can occasionally produce slightly awkward sentence grammar after substitution. A production system would use a larger model or a second LLM pass to rewrite flagged sentences fluently.
-2. **Scope discipline**: Early testing revealed the LLM would sometimes introduce claims about variables not included in a given test (e.g., mentioning yield in a crop-vs-season independence test that never measured yield). The prompt now explicitly restricts the model to only the named variables.
-3. **Model size trade-off**: A 1B-parameter model was used for speed and offline capability. It is less reliable at strict multi-constraint instruction-following than larger models (e.g., `phi3`, `llama3` 8B), which would reduce the above issues further.
+1. **Causal language leakage (regex filter)**: Even with hosted models, a regex-based post-processing filter is kept in place as a safety net to catch and soften causal phrases (e.g., "causes" → "association with"), since prompt instructions alone are not a guaranteed constraint. Because this is a word-level substitution rather than a grammar-aware rewrite, it can occasionally produce a slightly awkward sentence (e.g., "does not imply that pesticides association with higher yields" instead of a fully fluent rewrite). A production system would use a second LLM pass to rewrite flagged sentences fluently instead of direct word substitution.
+2. **Scope discipline**: Early testing with a small local model revealed the LLM would sometimes introduce claims about variables not included in a given test (e.g., mentioning yield in a crop-vs-season independence test that never measured yield). The prompt now explicitly restricts the model to only the named variables, and this failure mode was not observed with the larger hosted models used in the final version.
+3. **Model size trade-off**: Smaller/local models are far less reliable at strict multi-constraint instruction-following (numeric direction, scope, causal framing) than larger hosted models — see the Model Comparison table above for the specific failure modes observed at each scale.
 4. **Correlational, not causal, findings**: All statistical tests are observational. No causal claims should be drawn from any result without a controlled experiment.
+
+---
+
+## Sample Output
+
+**Question**: Does fertilizer usage significantly affect yield?
+
+```json
+{
+  "test": "Independent t-test",
+  "variable": "fertilizer usage vs normalized yield",
+  "t_stat": 2.509,
+  "p_value": 0.0121,
+  "significant": true,
+  "group_means": {
+    "high_fertilizer": 0.019,
+    "low_fertilizer": -0.019
+  },
+  "direction": "High fertilizer usage is associated with higher normalized yield compared to low fertilizer usage.",
+  "note": "Yield z-normalized within each crop to control for scale differences across crop types."
+}
+```
+
+**AI-Generated Insight**:
+> The analysis shows that farms with higher fertilizer usage tend to have higher normalized yield than those with lower usage. The difference is statistically significant, with a p-value of 0.0121, indicating that the observed association is unlikely to be due to random chance.
+
+**Question**: Is rainfall correlated with yield?
+
+```json
+{
+  "test": "Pearson correlation",
+  "variable": "rainfall vs normalized yield",
+  "correlation": 0.002,
+  "p_value": 0.77784,
+  "significant": false,
+  "direction": "No significant correlation was found between rainfall and normalized yield."
+}
+```
+
+**AI-Generated Insight**:
+> No correlation between rainfall and the yield of a crop was found through statistical analysis. The results show that the amount of rainfall in a given area does not have a significant effect on the yield of that crop.
 
 ---
 
@@ -88,7 +141,7 @@ Initial testing showed the LLM would sometimes state the *opposite* direction of
 
 - **Python**: Pandas, NumPy, SciPy, Statsmodels, pymannkendall
 - **Database**: MySQL
-- **LLM / NLP**: LangChain, Ollama (locally hosted `llama3.2:1b`)
+- **LLM / NLP**: LangChain, Groq API (`openai/gpt-oss-20b`) — swappable for a local Ollama model for fully offline use
 - **Visualization**: Matplotlib, Seaborn, Power BI
 - **App**: Streamlit
 
@@ -129,15 +182,17 @@ python load_data.py
 python eda.py
 ```
 
-3. Install [Ollama](https://ollama.com) and pull a model:
-```bash
-ollama pull llama3.2:1b
+3. Get a free API key from [Groq Console](https://console.groq.com), then create a `.env` file in the project root (see `.env.example`):
+```
+GROQ_API_KEY=your_actual_key_here
 ```
 
 4. Run the app:
 ```bash
 streamlit run app.py
 ```
+
+**Optional — fully offline mode**: install [Ollama](https://ollama.com), pull a local model (`ollama pull llama3.2:1b`), and swap the model initialization in `narrative_engine.py` from `ChatGroq` to `Ollama`. Note: local small models are less reliable at following the narrative constraints — see Model Comparison above.
 
 ---
 
